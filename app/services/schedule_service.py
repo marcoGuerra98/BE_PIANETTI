@@ -15,7 +15,7 @@ from app.models.match import (
 )
 from app.repositories.base import DataStore
 from app.services.goals import recalculate_goals
-from app.services.standings_service import compute_standings
+from app.services.standings_service import compute_group_standings
 from app.services.views import match_out
 
 # Minimo per il girone e anche numero di squadre ammesse alla fase finale.
@@ -216,7 +216,7 @@ class ScheduleService:
             self.store.matches.delete_many(m.id for m in knockout if not m.giocata)
             return
 
-        standings = compute_standings(self.store.teams.list(), group)
+        standings = compute_group_standings(self.store.teams.list(), group)
         if len(standings) < MIN_TEAMS:
             return
         seeds = [r.squadra_id for r in standings[:MIN_TEAMS]]

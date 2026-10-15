@@ -54,3 +54,22 @@ def test_scorers_sorted_desc_with_shared_positions():
     rows = compute_scorers(p, [t])
     assert [(r.cognome, r.goal, r.posizione) for r in rows] == [("Due", 5, 1), ("Tre", 3, 2), ("Uno", 3, 2)]
     assert rows[2].squadra_nome == "T" and rows[0].squadra_nome is None
+
+
+def test_standings_api_without_schedule_lists_all_teams(client, auth_headers):
+    for nome in ("Alfa", "Beta", "Gamma"):
+        assert client.post("/teams", json={"nome": nome}, headers=auth_headers).status_code == 201
+    rows = client.get("/standings").json()
+    assert [r["squadra_nome"] for r in rows] == ["Alfa", "Beta", "Gamma"]
+    assert all(r["punti"] == 0 and r["giocate"] == 0 for r in rows)
+
+
+def test_standings_api_excludes_teams_outside_group(client, auth_headers):
+    """Regressione: con il calendario generato, /standings mostra solo le squadre del girone."""
+    for nome in ("Alfa", "Beta", "Gamma", "Delta"):
+        assert client.post("/teams", json={"nome": nome}, headers=auth_headers).status_code == 201
+    assert client.post("/schedule/generate", headers=auth_headers).status_code == 201
+    assert client.post("/teams", json={"nome": "Epsilon"}, headers=auth_headers).status_code == 201
+
+    names = [r["squadra_nome"] for r in client.get("/standings").json()]
+    assert sorted(names) == ["Alfa", "Beta", "Delta", "Gamma"]

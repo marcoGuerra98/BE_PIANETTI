@@ -6,6 +6,7 @@ import pytest
 
 from app.errors import ConflictError, ValidationError
 from app.models.match import Fase, MatchUpdate
+from app.models.team import TeamCreate
 from app.services.schedule_service import round_robin
 
 
@@ -254,3 +255,25 @@ def test_cannot_change_teams_of_played_match(services, make_teams, play):
     free = next(t for t in (a, b, c, d, e) if not m.involves(t.id))
     with pytest.raises(ConflictError):
         services.matches.update(m.id, MatchUpdate(squadra_casa_id=free.id))
+
+
+def test_team_created_after_schedule_does_not_reach_semifinals(services, make_teams, play):
+    """Regressione: una squadra creata dopo la generazione del calendario (fuori dal
+    girone) non deve entrare in classifica né qualificarsi per le semifinali."""
+    a, b, c, d = make_teams(4)
+    services.schedule.generate()
+    late = services.teams.create(TeamCreate(nome="Squadra Tardiva"))
+
+    # d perde tutte le partite 0-1, le altre pareggiano 0-0: d ha 0 punti e
+    # differenza reti negativa, quindi la squadra tardiva (0 punti, DR 0) la
+    # supererebbe se fosse conteggiata.
+    for m in services.store.matches.list():
+        if m.involves(d.id):
+            play(m, 0, 1) if m.squadra_casa_id == d.id else play(m, 1, 0)
+        else:
+            play(m, 0, 0)
+
+    semis = _knockout(services, Fase.SEMIFINALE)
+    in_semis = {t for m in semis for t in (m.squadra_casa_id, m.squadra_trasferta_id)}
+    assert in_semis == {a.id, b.id, c.id, d.id}
+    assert late.id not in {r.squadra_id for r in services.standings.standings()}

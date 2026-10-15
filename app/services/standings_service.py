@@ -56,6 +56,26 @@ def compute_standings(teams: Iterable[Team], matches: Iterable[Match]) -> list[S
     return ordered
 
 
+def compute_group_standings(teams: Iterable[Team], matches: Iterable[Match]) -> list[StandingRow]:
+    """Classifica del girone limitata alle squadre che vi partecipano.
+
+    Se esistono partite di fase GIRONE contano solo le squadre presenti in esse:
+    una squadra creata dopo la generazione del calendario non entra in
+    classifica né nella fase finale. Senza calendario compaiono tutte le
+    squadre (a 0 punti). Regola unica usata da /standings e da sync_final_phase.
+    """
+    matches = list(matches)
+    group_team_ids = {
+        tid
+        for m in matches
+        if m.fase == Fase.GIRONE
+        for tid in (m.squadra_casa_id, m.squadra_trasferta_id)
+    }
+    if group_team_ids:
+        teams = [t for t in teams if t.id in group_team_ids]
+    return compute_standings(teams, matches)
+
+
 def compute_scorers(players: Iterable[Player], teams: Iterable[Team]) -> list[ScorerRow]:
     """Classifica marcatori: solo giocatori con almeno un goal, a pari merito stessa posizione."""
     team_names = {t.id: t.nome for t in teams}
@@ -90,7 +110,7 @@ class StandingsService:
         self.store = store
 
     def standings(self) -> list[StandingRow]:
-        return compute_standings(self.store.teams.list(), self.store.matches.list())
+        return compute_group_standings(self.store.teams.list(), self.store.matches.list())
 
     def scorers(self) -> list[ScorerRow]:
         return compute_scorers(self.store.players.list(), self.store.teams.list())
