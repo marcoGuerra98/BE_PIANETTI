@@ -137,3 +137,42 @@ def test_full_tournament_via_api(client, auth_headers):
     assert [r["punti"] for r in standings] == [3, 3, 3, 3]
     # tutti pari: ordine alfabetico
     assert [r["squadra_nome"] for r in standings] == ["Alfa", "Beta", "Delta", "Gamma"]
+
+
+def _assert_called_outside_event_loop(monkeypatch, service, method):
+    """Sostituisce `service.method` con un wrapper che registra se è stato chiamato
+    nel thread dell'event loop (cioè bloccandolo)."""
+    import asyncio
+
+    original = getattr(service, method)
+    calls = []
+
+    def wrapper(*args, **kwargs):
+        try:
+            asyncio.get_running_loop()
+            calls.append("event-loop")
+        except RuntimeError:
+            calls.append("threadpool")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(service, method, wrapper)
+    return calls
+
+
+def test_uploads_run_service_outside_event_loop(app, client, auth_headers, monkeypatch):
+    """Regressione: gli endpoint di upload sono async, ma i service (I/O su file e
+    FileLock) devono girare nel threadpool per non bloccare l'event loop."""
+    h = auth_headers
+    services = app.state.services
+    photo_calls = _assert_called_outside_event_loop(monkeypatch, services.players, "set_photo")
+    logo_calls = _assert_called_outside_event_loop(monkeypatch, services.teams, "set_logo")
+
+    p = client.post("/players", json={"nome": "A", "cognome": "B", "ruolo": "ATT", "overall": 60}, headers=h).json()
+    t = _team(client, h, "Alfa")
+    r = client.post(f"/players/{p['id']}/photo", files={"file": ("a.png", PNG, "image/png")}, headers=h)
+    assert r.status_code == 200, r.text
+    r = client.post(f"/teams/{t['id']}/logo", files={"file": ("a.png", PNG, "image/png")}, headers=h)
+    assert r.status_code == 200, r.text
+
+    assert photo_calls == ["threadpool"]
+    assert logo_calls == ["threadpool"]

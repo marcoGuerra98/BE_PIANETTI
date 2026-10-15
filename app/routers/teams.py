@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, File, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from app.deps import AdminDep, ServicesDep
 from app.models.team import Team, TeamCreate, TeamDetail, TeamUpdate
@@ -46,7 +47,9 @@ def delete_team(team_id: UUID, services: ServicesDep, _: AdminDep, force: bool =
 async def upload_logo(team_id: UUID, services: ServicesDep, _: AdminDep, file: UploadFile = File(...)):
     """Carica lo stemma (JPEG, PNG o WebP, massimo 2 MB) sostituendo il precedente."""
     data = await read_limited(file, services.settings.max_upload_bytes)
-    return services.teams.set_logo(team_id, data)
+    # Il service è sincrono (I/O su file e FileLock): va eseguito nel threadpool
+    # per non bloccare l'event loop di questo endpoint async.
+    return await run_in_threadpool(services.teams.set_logo, team_id, data)
 
 
 @router.delete("/{team_id}/logo", response_model=Team)

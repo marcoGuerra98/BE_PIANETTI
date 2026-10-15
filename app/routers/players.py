@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, File, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from app.deps import AdminDep, ServicesDep
 from app.models.player import PlayerCreate, PlayerOut, PlayerUpdate, Ruolo
@@ -49,7 +50,9 @@ def delete_player(player_id: UUID, services: ServicesDep, _: AdminDep):
 async def upload_photo(player_id: UUID, services: ServicesDep, _: AdminDep, file: UploadFile = File(...)):
     """Carica la foto (JPEG, PNG o WebP, massimo 2 MB) sostituendo la precedente."""
     data = await read_limited(file, services.settings.max_upload_bytes)
-    return services.players.set_photo(player_id, data)
+    # Il service è sincrono (I/O su file e FileLock): va eseguito nel threadpool
+    # per non bloccare l'event loop di questo endpoint async.
+    return await run_in_threadpool(services.players.set_photo, player_id, data)
 
 
 @router.delete("/{player_id}/photo", response_model=PlayerOut)
