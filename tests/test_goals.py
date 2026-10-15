@@ -188,3 +188,18 @@ def test_own_goal_via_api(client, auth_headers):
             "giocatore_nome": None, "giocatore_cognome": None,
         }
     ]
+
+
+def test_player_transferred_between_the_two_teams_keeps_goals_for_old_team(services, setup):
+    """Regressione: il giocatore segna per A in A-B e poi passa a B; risalvando lo stesso
+    risultato i suoi goal restano ad A (prima finivano a B, con 422 sul punteggio)."""
+    m, (a, b, c, d), (pa1, _, _, _) = setup
+    services.matches.set_result(m.id, _result(1, 0, (pa1, 1)))
+
+    p = services.players.get(pa1.id)
+    services.players.update(p.id, PlayerUpdate(**p.model_dump(include=set(PlayerUpdate.model_fields)) | {"squadra_id": b.id}))
+
+    out = services.matches.set_result(m.id, _result(1, 0, (pa1, 1)))
+    assert next(mk for mk in out.marcatori if mk.giocatore_id == pa1.id).squadra_id == a.id
+    assert (out.gol_casa, out.gol_trasferta) == (1, 0)
+    assert _goals(services, pa1) == [1]

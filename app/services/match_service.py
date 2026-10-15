@@ -147,8 +147,8 @@ class MatchService:
         - ogni giocatore compare una sola volta (i suoi goal vanno sommati);
         - al più una voce di autogol per squadra beneficiaria, che deve essere
           una delle due squadre in campo;
-        - il giocatore deve appartenere a una delle due squadre (oggi o, se è
-          stato trasferito, al momento del precedente inserimento);
+        - se il giocatore era già marcatore di questa partita vale la squadra
+          registrata allora; altrimenti deve appartenere oggi a una delle due;
         - per ciascuna squadra la somma dei goal deve coincidere col punteggio.
         La squadra di ogni marcatore viene fissata qui, una volta per tutte.
         """
@@ -174,10 +174,13 @@ class MatchService:
             player = self.store.players.get(mk.giocatore_id)
             if player is None:
                 raise ValidationError(f"Giocatore {mk.giocatore_id} inesistente")
-            if player.squadra_id in teams_in_match:
-                squadra = player.squadra_id
-            elif previous.get(player.id) in teams_in_match:
+            # La squadra già registrata per questa partita prevale su quella
+            # attuale: un trasferimento successivo (anche verso l'avversaria)
+            # non deve spostare i goal quando il risultato viene risalvato.
+            if previous.get(player.id) in teams_in_match:
                 squadra = previous[player.id]
+            elif player.squadra_id in teams_in_match:
+                squadra = player.squadra_id
             else:
                 raise ValidationError(
                     f"{player.nome} {player.cognome} non appartiene a nessuna delle due squadre"
