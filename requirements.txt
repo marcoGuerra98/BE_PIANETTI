@@ -1,0 +1,12 @@
+fastapi==0.143.2
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+pydantic-settings==2.16.0
+python-multipart==0.0.32
+argon2-cffi==25.1.0
+PyJWT==2.15.1
+filelock==4.2.0
+
+# test
+pytest==9.1.1
+httpx2==2.13.1
