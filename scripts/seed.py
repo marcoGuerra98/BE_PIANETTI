@@ -36,6 +36,16 @@ COGNOMI = [
 # Rosa tipo di 12 giocatori e peso di ciascun ruolo nella scelta dei marcatori.
 ROSTER = [Ruolo.POR] * 2 + [Ruolo.DIF] * 4 + [Ruolo.CEN] * 3 + [Ruolo.ATT] * 3
 SCORER_WEIGHT = {Ruolo.POR: 0, Ruolo.DIF: 1, Ruolo.CEN: 3, Ruolo.ATT: 7}
+
+
+def fascia_da_overall(overall: int) -> int:
+    """Fascia plausibile dall'overall: 1 (>= 80), 2 (>= 72), 3 (>= 64), altrimenti 4."""
+    for fascia, soglia in ((1, 80), (2, 72), (3, 64)):
+        if overall >= soglia:
+            return fascia
+    return 4
+
+
 DESCRIZIONI = {
     Ruolo.POR: "Reattivo tra i pali, bravo nelle uscite alte.",
     Ruolo.DIF: "Difensore solido, forte nel gioco aereo e negli anticipi.",
@@ -74,11 +84,12 @@ def main() -> int:
         roster[team.id] = []
         for ruolo in ROSTER:
             nome, cognome = names.pop()
+            overall = max(45, min(95, int(rng.gauss(72, 9))))
             roster[team.id].append(
                 svc.players.create(
                     PlayerCreate(
                         nome=nome, cognome=cognome, ruolo=ruolo, squadra_id=team.id,
-                        overall=max(45, min(95, int(rng.gauss(72, 9)))),
+                        overall=overall, fascia=fascia_da_overall(overall),
                         descrizione=DESCRIZIONI[ruolo],
                     )
                 )
@@ -86,7 +97,9 @@ def main() -> int:
     # qualche svincolato
     for ruolo in (Ruolo.CEN, Ruolo.ATT):
         nome, cognome = names.pop()
-        svc.players.create(PlayerCreate(nome=nome, cognome=cognome, ruolo=ruolo, overall=60))
+        svc.players.create(
+            PlayerCreate(nome=nome, cognome=cognome, ruolo=ruolo, overall=60, fascia=fascia_da_overall(60))
+        )
 
     svc.schedule.rng = rng
     schedule = svc.schedule.generate(confirm=True)

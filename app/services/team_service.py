@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.errors import ConflictError, NotFoundError
 from app.models.match import KNOCKOUT_PHASES
+from app.models.player import PlayerOut, ruolo_index
 from app.models.team import Team, TeamCreate, TeamDetail, TeamUpdate
 from app.repositories.base import DataStore
 from app.services.goals import recalculate_goals
@@ -50,9 +51,31 @@ class TeamService:
         teams = {team.id: team}
         roster = sorted(
             (p for p in self.store.players.list() if p.squadra_id == team_id),
-            key=lambda p: ("POR DIF CEN ATT".index(p.ruolo), -p.overall, p.cognome.casefold()),
+            key=lambda p: (ruolo_index(p.ruolo), -p.overall, p.cognome.casefold()),
         )
         return TeamDetail(**team.model_dump(), giocatori=[player_out(p, teams) for p in roster])
+
+    def assign_player(self, team_id: UUID, player_id: UUID) -> PlayerOut:
+        """Inserisce un giocatore esistente nella rosa della squadra.
+
+        Idempotente se è già in questa squadra; 409 se è nella rosa di un'altra
+        (va prima svincolato).
+        """
+        with self.store.transaction():
+            team = self._get(team_id)
+            player = self.store.players.get(player_id)
+            if player is None:
+                raise NotFoundError("Giocatore non trovato")
+            if player.squadra_id is not None and player.squadra_id != team_id:
+                current = self.store.teams.get(player.squadra_id)
+                current_name = current.nome if current else None
+                raise ConflictError(
+                    f"{player.nome} {player.cognome} è già nella rosa di {current_name}",
+                    details={"squadra_id": str(player.squadra_id), "squadra_nome": current_name},
+                )
+            if player.squadra_id is None:
+                player = self.store.players.update(player.model_copy(update={"squadra_id": team_id}))
+        return player_out(player, {team.id: team})
 
     def create(self, data: TeamCreate) -> Team:
         with self.store.transaction():

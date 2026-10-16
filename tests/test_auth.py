@@ -78,6 +78,8 @@ WRITE_ENDPOINTS = [
     ("put", "/matches/00000000-0000-0000-0000-000000000000/result", {"gol_casa": 0, "gol_trasferta": 0}),
     ("delete", "/matches/00000000-0000-0000-0000-000000000000/result", None),
     ("post", "/auth/change-password", {"current_password": "a", "new_password": "abcdefgh"}),
+    ("put", "/teams/00000000-0000-0000-0000-000000000000/players/00000000-0000-0000-0000-000000000000", None),
+    ("post", "/tournament/reset", {"password": "x"}),
 ]
 
 

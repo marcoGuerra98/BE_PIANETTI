@@ -15,6 +15,22 @@ class Ruolo(StrEnum):
     ATT = "ATT"
 
 
+# Ordine "di campo" dei ruoli (non alfabetico), usato per rose ed elenchi.
+ORDINE_RUOLI: tuple[Ruolo, ...] = (Ruolo.POR, Ruolo.DIF, Ruolo.CEN, Ruolo.ATT)
+
+
+def ruolo_index(ruolo: Ruolo) -> int:
+    """Posizione del ruolo in ORDINE_RUOLI, da usare come chiave di ordinamento."""
+    return ORDINE_RUOLI.index(ruolo)
+
+
+class StatoGiocatore(StrEnum):
+    """Stato di tesseramento: senza squadra (svincolato) o in una rosa (assegnato)."""
+
+    SVINCOLATO = "svincolato"
+    ASSEGNATO = "assegnato"
+
+
 class PlayerBase(BaseModel):
     """Campi modificabili dal client; `goal` e `foto` sono esclusi di proposito."""
 
@@ -23,6 +39,8 @@ class PlayerBase(BaseModel):
     ruolo: Ruolo
     squadra_id: UUID | None = None
     overall: int = Field(ge=1, le=99)
+    # Fascia di valore: 1 = migliore, 4 = peggiore. Facoltativa (dati esistenti senza fascia).
+    fascia: int | None = Field(default=None, ge=1, le=4)
     descrizione: str = Field(default="", max_length=1000)
 
     # mode="before": gli spazi si tolgono prima del controllo di lunghezza,

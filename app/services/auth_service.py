@@ -10,7 +10,7 @@ import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
-from app.errors import AuthError, NotFoundError, TooManyAttemptsError, ValidationError
+from app.errors import AuthError, ForbiddenError, NotFoundError, TooManyAttemptsError, ValidationError
 from app.models.auth import AdminCredentials, TokenOut
 from app.repositories.base import AdminRepository
 
@@ -171,6 +171,22 @@ class AuthService:
         if admin is None or payload.get("sub") != admin.username or payload.get("ver") != admin.token_version:
             raise AuthError("Token non valido")
         return admin.username
+
+    def verify_admin_password(self, username: str, password: str, client_key: str) -> None:
+        """Conferma di un'operazione critica ripetendo la password dell'admin già autenticato.
+
+        Password errata → ForbiddenError (403, non 401: il frontend su 401 fa
+        logout). Applica il rate limit su `client_key`, da prefissare per non
+        condividere il contatore con il login.
+        """
+        self.limiter.check(client_key)
+        admin = self.admin_repo.get()
+        if admin is None or admin.username != username:
+            raise AuthError("Token non valido")
+        if not verify_password(admin.password_hash, password):
+            self.limiter.register_failure(client_key)
+            raise ForbiddenError("Password non corretta")
+        self.limiter.reset(client_key)
 
     def change_password(self, username: str, current_password: str, new_password: str) -> TokenOut:
         """Cambia la password, invalida i token esistenti e ne restituisce uno nuovo."""

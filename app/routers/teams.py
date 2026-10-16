@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, UploadFile, status
 from starlette.concurrency import run_in_threadpool
 
 from app.deps import AdminDep, ServicesDep
+from app.models.player import PlayerOut
 from app.models.team import Team, TeamCreate, TeamDetail, TeamUpdate
 from app.routers.uploads import read_limited
 from app.services.team_service import TeamDeleteResult
@@ -41,6 +42,19 @@ def update_team(team_id: UUID, data: TeamUpdate, services: ServicesDep, _: Admin
 def delete_team(team_id: UUID, services: ServicesDep, _: AdminDep, force: bool = False):
     """Elimina la squadra svincolando i giocatori; restituisce il riepilogo delle modifiche."""
     return services.teams.delete(team_id, force=force)
+
+
+@router.put(
+    "/{team_id}/players/{player_id}",
+    response_model=PlayerOut,
+    responses={
+        404: {"description": "Squadra o giocatore inesistente"},
+        409: {"description": "Il giocatore è già nella rosa di un'altra squadra"},
+    },
+)
+def assign_player(team_id: UUID, player_id: UUID, services: ServicesDep, _: AdminDep):
+    """Aggiunge un giocatore esistente (svincolato) alla rosa; idempotente se è già in squadra."""
+    return services.teams.assign_player(team_id, player_id)
 
 
 @router.post("/{team_id}/logo", response_model=Team)

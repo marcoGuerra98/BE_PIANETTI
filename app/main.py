@@ -12,13 +12,14 @@ from app.config import Settings, get_settings
 from app.deps import Services
 from app.errors import AuthError, DomainError, TooManyAttemptsError
 from app.repositories.json_store import JsonDataStore
-from app.routers import auth, players, schedule, standings, teams
+from app.routers import auth, players, schedule, standings, teams, tournament
 from app.services.auth_service import AuthService, LoginRateLimiter
 from app.services.match_service import MatchService
 from app.services.player_service import PlayerService
 from app.services.schedule_service import ScheduleService
 from app.services.standings_service import StandingsService
 from app.services.team_service import TeamService
+from app.services.tournament_service import TournamentService
 from app.services.upload_service import UploadService
 
 MIN_SECRET_LENGTH = 32
@@ -29,6 +30,13 @@ def build_services(settings: Settings) -> Services:
     store = JsonDataStore(settings.resolved_data_dir)
     uploads = UploadService(settings.uploads_dir, settings.max_upload_bytes)
     schedule_svc = ScheduleService(store)
+    auth_svc = AuthService(
+        store.admin,
+        secret_key=settings.secret_key,
+        expire_minutes=settings.access_token_expire_minutes,
+        algorithm=settings.jwt_algorithm,
+        limiter=LoginRateLimiter(settings.login_max_attempts, settings.login_lockout_seconds),
+    )
     return Services(
         settings=settings,
         store=store,
@@ -38,13 +46,8 @@ def build_services(settings: Settings) -> Services:
         schedule=schedule_svc,
         matches=MatchService(store, schedule_svc),
         standings=StandingsService(store),
-        auth=AuthService(
-            store.admin,
-            secret_key=settings.secret_key,
-            expire_minutes=settings.access_token_expire_minutes,
-            algorithm=settings.jwt_algorithm,
-            limiter=LoginRateLimiter(settings.login_max_attempts, settings.login_lockout_seconds),
-        ),
+        auth=auth_svc,
+        tournament=TournamentService(store, auth_svc),
     )
 
 
@@ -89,7 +92,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers["Retry-After"] = str(exc.retry_after)
         return JSONResponse(status_code=exc.status_code, content=body, headers=headers)
 
-    for r in (auth.router, players.router, teams.router, schedule.router, standings.router):
+    for r in (auth.router, players.router, teams.router, schedule.router, standings.router, tournament.router):
         app.include_router(r)
 
     app.mount("/uploads", StaticFiles(directory=settings.uploads_dir), name="uploads")

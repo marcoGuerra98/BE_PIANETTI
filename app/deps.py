@@ -15,6 +15,7 @@ from app.services.player_service import PlayerService
 from app.services.schedule_service import ScheduleService
 from app.services.standings_service import StandingsService
 from app.services.team_service import TeamService
+from app.services.tournament_service import TournamentService
 from app.services.upload_service import UploadService
 
 
@@ -31,6 +32,7 @@ class Services:
     matches: MatchService
     standings: StandingsService
     auth: AuthService
+    tournament: TournamentService
 
 
 def get_services(request: Request) -> Services:

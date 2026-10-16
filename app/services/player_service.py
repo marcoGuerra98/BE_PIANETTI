@@ -4,7 +4,15 @@ from enum import StrEnum
 from uuid import UUID
 
 from app.errors import ConflictError, NotFoundError, ValidationError
-from app.models.player import Player, PlayerCreate, PlayerOut, PlayerUpdate, Ruolo
+from app.models.player import (
+    Player,
+    PlayerCreate,
+    PlayerOut,
+    PlayerUpdate,
+    Ruolo,
+    StatoGiocatore,
+    ruolo_index,
+)
 from app.repositories.base import DataStore
 from app.services.upload_service import UploadService
 from app.services.views import player_out
@@ -16,6 +24,14 @@ class PlayerSort(StrEnum):
     OVERALL_DESC = "overall_desc"
     OVERALL_ASC = "overall_asc"
     NOME = "nome"
+    # Ordine di campo POR, DIF, CEN, ATT (non alfabetico), poi cognome e nome.
+    RUOLO = "ruolo"
+
+
+def _matches_name(player: Player, term: str) -> bool:
+    """True se `term` (già normalizzato e in casefold) compare in "nome cognome" o "cognome nome"."""
+    nome, cognome = " ".join(player.nome.split()), " ".join(player.cognome.split())
+    return term in f"{nome} {cognome}".casefold() or term in f"{cognome} {nome}".casefold()
 
 
 class PlayerService:
@@ -45,24 +61,31 @@ class PlayerService:
         svincolati: bool = False,
         q: str | None = None,
         sort: PlayerSort = PlayerSort.OVERALL_DESC,
+        fascia: int | None = None,
+        stato: StatoGiocatore | None = None,
     ) -> list[PlayerOut]:
         """Elenco filtrato e ordinato.
 
-        `svincolati=True` prevale su `squadra_id`; `q` cerca senza distinzione
-        di maiuscole in "nome cognome" e "cognome nome".
+        `svincolati=True` equivale a `stato=svincolato` (mantenuto per
+        compatibilità) e prevale su `squadra_id`; `q` cerca senza distinzione
+        di maiuscole in "nome cognome" e "cognome nome", con spazi normalizzati.
         """
+        if svincolati:
+            stato = StatoGiocatore.SVINCOLATO
         players = self.store.players.list()
         if ruolo:
             players = [p for p in players if p.ruolo == ruolo]
-        if svincolati:
+        if fascia is not None:
+            players = [p for p in players if p.fascia == fascia]
+        if stato == StatoGiocatore.SVINCOLATO:
             players = [p for p in players if p.squadra_id is None]
-        elif squadra_id:
-            players = [p for p in players if p.squadra_id == squadra_id]
-        if q and (term := q.strip().casefold()):
-            players = [
-                p for p in players
-                if term in f"{p.nome} {p.cognome}".casefold() or term in f"{p.cognome} {p.nome}".casefold()
-            ]
+        else:
+            if stato == StatoGiocatore.ASSEGNATO:
+                players = [p for p in players if p.squadra_id is not None]
+            if squadra_id:
+                players = [p for p in players if p.squadra_id == squadra_id]
+        if q and (term := " ".join(q.split()).casefold()):
+            players = [p for p in players if _matches_name(p, term)]
         by_name = lambda p: (p.cognome.casefold(), p.nome.casefold())  # noqa: E731
         match sort:
             case PlayerSort.OVERALL_DESC:
@@ -71,6 +94,8 @@ class PlayerService:
                 players.sort(key=lambda p: (p.overall, *by_name(p)))
             case PlayerSort.NOME:
                 players.sort(key=by_name)
+            case PlayerSort.RUOLO:
+                players.sort(key=lambda p: (ruolo_index(p.ruolo), *by_name(p)))
         teams = self._teams()
         return [player_out(p, teams) for p in players]
 

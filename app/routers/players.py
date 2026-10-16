@@ -1,12 +1,13 @@
 """Endpoint dei giocatori: letture pubbliche, scritture riservate all'amministratore."""
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, UploadFile, status
+from fastapi import APIRouter, File, Query, UploadFile, status
 from starlette.concurrency import run_in_threadpool
 
 from app.deps import AdminDep, ServicesDep
-from app.models.player import PlayerCreate, PlayerOut, PlayerUpdate, Ruolo
+from app.models.player import PlayerCreate, PlayerOut, PlayerUpdate, Ruolo, StatoGiocatore
 from app.routers.uploads import read_limited
 from app.services.player_service import PlayerSort
 
@@ -18,12 +19,22 @@ def list_players(
     services: ServicesDep,
     ruolo: Ruolo | None = None,
     squadra_id: UUID | None = None,
-    svincolati: bool = False,
-    q: str | None = None,
+    svincolati: Annotated[
+        bool, Query(description="Solo giocatori senza squadra (equivale a stato=svincolato)")
+    ] = False,
+    q: Annotated[str | None, Query(description="Ricerca su nome e cognome, in qualsiasi ordine")] = None,
     sort: PlayerSort = PlayerSort.OVERALL_DESC,
+    fascia: Annotated[int | None, Query(ge=1, le=4, description="Fascia di valore (1 = migliore)")] = None,
+    stato: Annotated[StatoGiocatore | None, Query(description="svincolato o assegnato a una squadra")] = None,
 ):
-    """Elenco con filtri per ruolo, squadra o svincolati e ricerca testuale `q`."""
-    return services.players.list(ruolo=ruolo, squadra_id=squadra_id, svincolati=svincolati, q=q, sort=sort)
+    """Elenco con filtri per ruolo, fascia, squadra, stato e ricerca testuale `q`.
+
+    Esempio: `?stato=assegnato&sort=ruolo` elenca i giocatori di tutte le
+    squadre ordinati per ruolo (POR, DIF, CEN, ATT), cognome e nome.
+    """
+    return services.players.list(
+        ruolo=ruolo, squadra_id=squadra_id, svincolati=svincolati, q=q, sort=sort, fascia=fascia, stato=stato
+    )
 
 
 @router.get("/{player_id}", response_model=PlayerOut)

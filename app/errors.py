@@ -42,6 +42,15 @@ class AuthError(DomainError):
     status_code = 401
 
 
+class ForbiddenError(DomainError):
+    """Utente autenticato ma operazione negata (es. conferma password errata).
+
+    Si usa 403 e non 401: il frontend su 401 esegue il logout automatico.
+    """
+
+    status_code = 403
+
+
 class TooManyAttemptsError(DomainError):
     """Troppi tentativi di login falliti; `retry_after` (secondi) finisce nell'header Retry-After."""
 

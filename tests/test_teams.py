@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pytest
 
 from app.errors import ConflictError, NotFoundError
@@ -101,3 +103,68 @@ def test_team_detail_contains_roster(services, make_teams, make_player):
     detail = services.teams.get(a.id)
     assert [p.cognome for p in detail.giocatori] == ["Por", "Att"]
     assert all(p.squadra_nome == a.nome for p in detail.giocatori)
+
+
+# --- assegnazione di un giocatore esistente ---
+
+
+def test_assign_free_player(services, make_teams, make_player):
+    (a,) = make_teams(1)
+    p = make_player(None)
+    out = services.teams.assign_player(a.id, p.id)
+    assert (out.squadra_id, out.squadra_nome) == (a.id, a.nome)
+    assert [g.id for g in services.teams.get(a.id).giocatori] == [p.id]
+
+
+def test_assign_player_already_in_same_team_is_idempotent(services, make_teams, make_player):
+    (a,) = make_teams(1)
+    p = make_player(a)
+    assert services.teams.assign_player(a.id, p.id).squadra_id == a.id
+
+
+def test_assign_player_of_other_team_conflicts(services, make_teams, make_player):
+    a, b = make_teams(2)
+    p = make_player(a)
+    with pytest.raises(ConflictError) as exc:
+        services.teams.assign_player(b.id, p.id)
+    assert exc.value.message == f"Mario Rossi è già nella rosa di {a.nome}"
+    assert exc.value.details == {"squadra_id": str(a.id), "squadra_nome": a.nome}
+    assert services.players.get(p.id).squadra_id == a.id
+
+
+def test_assign_player_not_found(services, make_teams, make_player):
+    (a,) = make_teams(1)
+    p = make_player(None)
+    with pytest.raises(NotFoundError, match="Squadra non trovata"):
+        services.teams.assign_player(uuid4(), p.id)
+    with pytest.raises(NotFoundError, match="Giocatore non trovato"):
+        services.teams.assign_player(a.id, uuid4())
+
+
+def test_assign_player_api(client, auth_headers):
+    h = auth_headers
+    a = client.post("/teams", json={"nome": "Alfa"}, headers=h).json()
+    b = client.post("/teams", json={"nome": "Beta"}, headers=h).json()
+    p = client.post("/players", json={"nome": "Mario", "cognome": "Rossi", "ruolo": "ATT", "overall": 70}, headers=h).json()
+    url = f"/teams/{a['id']}/players/{p['id']}"
+
+    r = client.put(url)
+    assert r.status_code == 401
+
+    r = client.put(url, headers=h)
+    assert r.status_code == 200
+    assert (r.json()["squadra_id"], r.json()["squadra_nome"]) == (a["id"], "Alfa")
+    assert client.put(url, headers=h).status_code == 200  # idempotente
+
+    r = client.put(f"/teams/{b['id']}/players/{p['id']}", headers=h)
+    assert r.status_code == 409
+    assert r.json() == {
+        "detail": "Mario Rossi è già nella rosa di Alfa",
+        "details": {"squadra_id": a["id"], "squadra_nome": "Alfa"},
+    }
+
+    missing = "00000000-0000-0000-0000-000000000000"
+    r = client.put(f"/teams/{missing}/players/{p['id']}", headers=h)
+    assert (r.status_code, r.json()["detail"]) == (404, "Squadra non trovata")
+    r = client.put(f"/teams/{a['id']}/players/{missing}", headers=h)
+    assert (r.status_code, r.json()["detail"]) == (404, "Giocatore non trovato")
